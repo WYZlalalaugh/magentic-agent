@@ -157,21 +157,41 @@ class MarkdownOptimizer:
         if self._llm is None:
             return ""
 
-        prompt = f"""你是 Agent 自我认知更新代理。根据用户新事实更新自我认知。
+        prompt = f"""你是 Agent 自我认知更新代理。根据新事实更新 SELF.md，只保留三个 section，不新增 section。
 
-SELF.md 包含三段内容（保持三段结构不变）：
-1. Agent 的人格和定位
-2. Agent 对当前用户的理解
-3. Agent 和当前用户的关系定位
+## 目标
+- 只输出完整的 SELF.md
+- 只允许保留以下三个 section：
+  - `## 人格与形象`
+  - `## 对当前用户的理解`
+  - `## 关系的定义`
+- 绝对禁止新增任何其他 section
+
+## 更新原则
+- 当前 SELF.md 是主文本，优先保留已有的语气和关系定义；不要机械重写
+- 待合并事实只是辅助证据，只在确实帮助澄清以下内容时少量吸收：
+  - Agent 的定位、说话风格、交互边界
+  - Agent 对当前用户的稳定理解
+  - Agent 与当前用户关系的长期定义
+- 大多数待合并事实与 SELF.md 无关；无关时直接忽略，不要为了"有输入"而强行改写
+- 尤其不要把以下内容写进 SELF.md：
+  - 用户资料清单、账号、key、设备参数
+  - 健康状态、动态指标、短期计划、近期事件
+  - 工具规范、SOP、调用规则、执行流程
+  - 对话事件复盘、事件流水账
+- 如果没有足够高价值的新信息，宁可输出与当前 SELF.md 基本一致的版本
+- 保持语气稳定、简洁、有立场
+
+## 输出约束
+- 输出必须以 `# MagenticAgent 的自我认知` 开头
+- 只能包含标题和 bullet 列表
+- 不要代码块，不要解释
 
 ## 当前 SELF.md
 {current_self or "（空）"}
 
 ## 用户新事实
-{pending}
-
-## 输出
-直接输出完整的 SELF.md 内容（不要 JSON 包裹，不要解释）："""
+{pending}"""
 
         try:
             response = await self._llm.chat(
