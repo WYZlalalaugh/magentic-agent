@@ -744,6 +744,10 @@ class ChannelManager:
         self._task: asyncio.Task | None = None
         self._record_activity = record_activity_callback
 
+    def set_activity_callback(self, callback: Callable | None) -> None:
+        """设置用户活动钩子（供主动推送系统使用）。"""
+        self._record_activity = callback
+
     @staticmethod
     def _channel_supports_streaming(channel_name: str) -> bool:
         from .service import get_channel_service

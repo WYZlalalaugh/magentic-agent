@@ -238,6 +238,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             if proactive_loop._enabled:
                 await proactive_loop.start()
                 logger.info("Proactive loop started")
+
+                # Wire user activity callback into ChannelManager
+                try:
+                    from app.channels.service import get_channel_service
+                    svc = get_channel_service()
+                    if svc and hasattr(svc, 'manager'):
+                        svc.manager.set_activity_callback(proactive_loop.record_user_activity)
+                        logger.info("Proactive loop: user activity callback wired into ChannelManager")
+                except Exception:
+                    logger.warning("Could not wire user activity callback into ChannelManager")
         except Exception:
             logger.exception("Failed to start proactive loop")
 
