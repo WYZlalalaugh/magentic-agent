@@ -224,7 +224,36 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception:
             logger.exception("No IM channels configured or channel service failed to start")
 
+        # Start proactive push loop (references magentic-proactive engine)
+        proactive_loop = None
+        try:
+            from deerflow.agents.middlewares.proactive_loop_middleware import ProactiveLoopMiddleware
+
+            proactive_loop = ProactiveLoopMiddleware(
+                mcp_pool=getattr(app.state, "mcp_pool", None),
+                llm_client=getattr(app.state, "llm_client", None),
+                channel_manager=getattr(app.state, "channel_manager", None),
+                enabled=startup_config.proactive.enabled if hasattr(startup_config, 'proactive') else False,
+            )
+            if proactive_loop._enabled:
+                await proactive_loop.start()
+                logger.info("Proactive loop started")
+        except Exception:
+            logger.exception("Failed to start proactive loop")
+
         yield
+
+        # Stop proactive loop before channels shut down
+        if proactive_loop is not None:
+            try:
+                await asyncio.wait_for(
+                    proactive_loop.stop(),
+                    timeout=_SHUTDOWN_HOOK_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning("Proactive loop shutdown timed out")
+            except Exception:
+                logger.exception("Proactive loop shutdown failed")
 
         # Stop channel service on shutdown (bounded to prevent worker hang)
         try:

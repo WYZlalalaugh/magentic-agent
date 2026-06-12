@@ -154,27 +154,3 @@ class ProactiveLoopMiddleware:
         if self._loop:
             from datetime import datetime, timezone
             self._loop.record_user_activity(datetime.now(timezone.utc))
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Wiring instructions — insert into Gateway startup:
-#
-#   from deerflow.agents.middlewares.proactive_loop_middleware import ProactiveLoopMiddleware
-#
-#   proactive = ProactiveLoopMiddleware(
-#       mcp_pool=mcp_pool_instance,              # from deerflow.mcp
-#       llm_client=llm_provider,                 # from config
-#       llm_model="gpt-4",
-#       channel_manager=channel_manager_instance, # from app.channels
-#       proactive_sources_path="workspace/proactive_sources.json",
-#       drift_skills_dir="workspace/drift/skills",
-#   )
-#
-#   # In lifespan():
-#   await proactive.start()
-#   yield
-#   await proactive.stop()
-#
-#   # On each passive turn, after user message received:
-#   proactive.record_user_activity(channel, chat_id)
-# ═══════════════════════════════════════════════════════════════════════════════
