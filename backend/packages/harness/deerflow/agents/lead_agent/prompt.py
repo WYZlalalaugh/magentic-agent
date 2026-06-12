@@ -623,10 +623,11 @@ def _get_markdown_memory_context(user_id: str, config: Any) -> str:
     from deerflow.agents.memory.markdown_store import MarkdownMemoryStore
     from pathlib import Path
 
-    base_dir = getattr(config, "storage_path", None)
-    if not base_dir or not str(base_dir).strip():
-        base_dir = str(Path.home() / ".deer-flow")
-
+    # MarkdownMemoryStore uses a base_dir where users/{id}/memory/ is created.
+    # This is separate from the JSON storage_path (which points to memory.json).
+    # Default to ~/.deer-flow, which is where DeerFlow runtime data lives.
+    import os
+    base_dir = os.environ.get("DEER_FLOW_HOME", str(Path.home() / ".deer-flow"))
     store = MarkdownMemoryStore(base_dir=Path(base_dir))
 
     # MEMORY.md — 用户画像全文
