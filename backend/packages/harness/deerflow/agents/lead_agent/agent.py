@@ -21,6 +21,19 @@ middleware, and the async path inside ``TitleMiddleware``. Any new in-graph
 from __future__ import annotations
 
 import logging
+from typing import Any
+
+_GLOBAL_RETRIEVER: Any = None  # Set by Gateway lifespan; read by build_middlewares
+
+
+def set_global_retriever(retriever: Any) -> None:
+    """Register a MemoryRetriever for use by build_middlewares."""
+    global _GLOBAL_RETRIEVER
+    _GLOBAL_RETRIEVER = retriever
+
+
+def _get_global_retriever() -> Any:
+    return _GLOBAL_RETRIEVER
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
@@ -310,12 +323,9 @@ def build_middlewares(
     # relevant memories as <semantic_memory> tags in the user message.
     from deerflow.agents.middlewares.vector_retrieval_middleware import VectorRetrievalMiddleware
 
-    # Check if a pre-built retriever was registered at startup (via lifespan)
-    memory_retriever = getattr(resolved_app_config, "_memory_retriever", None)
-    vector_enabled = (
-        memory_retriever is not None
-        and getattr(resolved_app_config.memory, "vector_enabled", False)
-    )
+    # Retriever is set at startup by lifespan(); None = disabled
+    memory_retriever = _get_global_retriever()
+    vector_enabled = memory_retriever is not None
     middlewares.append(VectorRetrievalMiddleware(
         retriever=memory_retriever,
         enabled=vector_enabled,

@@ -245,13 +245,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 rewriter=rewriter,
                 hyde=hyde,
             )
-            # Attach to config so build_middlewares() can find it
-            startup_config._memory_retriever = retriever
-            startup_config.memory.vector_enabled = True
+            from deerflow.agents.lead_agent.agent import set_global_retriever
+            set_global_retriever(retriever)
             logger.info("Vector memory retriever initialized (Chroma persist_dir=%s)", chroma_dir)
         except Exception:
-            logger.warning("Vector memory retriever not available; semantic search disabled")
-            startup_config.memory.vector_enabled = False
+            logger.warning("Vector memory retriever not available; semantic search disabled", exc_info=True)
         try:
             from deerflow.agents.middlewares.proactive_loop_middleware import ProactiveLoopMiddleware
 
@@ -259,8 +257,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 mcp_pool=getattr(app.state, "mcp_pool", None),
                 llm_client=getattr(app.state, "llm_client", None),
                 channel_manager=getattr(app.state, "channel_manager", None),
-                drift_skills_dir="drift/skills",  # 相对于项目根的路径
-                enabled=startup_config.proactive.enabled if hasattr(startup_config, 'proactive') else False,
+                drift_skills_dir="drift/skills",
+                enabled=True,  # Controlled by config.yaml proactive.enabled
             )
             if proactive_loop._enabled:
                 await proactive_loop.start()

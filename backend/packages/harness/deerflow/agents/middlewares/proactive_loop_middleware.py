@@ -88,13 +88,9 @@ class ProactiveLoopMiddleware:
         async def fetch_fn() -> list[dict]:
             if self._mcp_pool is None:
                 return []
-            try:
-                from magentic_proactive_mcp import fetch_content_events_async
-                return await fetch_content_events_async(self._mcp_pool)
-            except ImportError:
-                pass  # MCP source 模块未安装时跳过
-            except Exception:
-                logger.exception("ProactiveLoop: fetch failed")
+            # Wire your own MCP source fetch logic here.
+            # Example: from app.mcp import fetch_content_events_async
+            #          return await fetch_content_events_async(self._mcp_pool)
             return []
 
         # 3. 构建 Judge
