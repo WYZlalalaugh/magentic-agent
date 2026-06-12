@@ -65,17 +65,21 @@ class HyDEEnhancer:
             return None
 
     def _build_prompt(self, query: str, style: str) -> str:
-        """构建假设生成的 prompt。"""
+        """构建假设生成的 prompt（参考 magentic-agent 的 HyDE 实现）。"""
         if style == "event":
-            return f"""生成一条假设的带时间戳的事件记忆条目，格式类似：
-[YYYY-MM-DD] 用户做了某事
+            return f"""Generate a hypothetical memory entry with a specific time, format like '[2026-03-08] User...'.
+Keep the original query's semantic polarity — if the query asks about likes, generate positive; if it asks about dislikes, generate negative.
+Write in third-person, one line only.
 
-用户查询：{query}
+Query: {query}
 
-输出一行（不要任何解释）："""
+Output only the entry:"""
         else:
-            return f"""生成一条假设的用户画像或偏好记忆条目，第三人称，肯定句式。
+            return f"""Generate a hypothetical memory entry as if it existed in the database.
+Always generate an affirmative, third-person declarative statement ('User...').
+Keep it concise and factual. Keep the original query's semantic polarity.
+Do not add information not present in the query.
 
-用户查询：{query}
+Query: {query}
 
-输出一行（不要任何解释）："""
+Output only the entry:"""

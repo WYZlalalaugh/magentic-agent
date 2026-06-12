@@ -160,33 +160,42 @@ class QueryRewriter:
         return text
 
     def _build_prompt(self, user_msg: str, recent_history: str) -> str:
-        """构建历史感知改写的 LLM prompt。"""
-        history_block = ""
-        if recent_history and recent_history.strip():
-            history_block = f"""## 近期对话历史
-{recent_history.strip()}
+        """构建历史感知改写的 LLM prompt（参考 magentic-agent 验证过的规则）。"""
+        history_block = recent_history.strip() or "（无）"
+        return f"""你是记忆检索决策器。根据近期对话和当前用户消息，判断是否需要检索用户个人事实或历史事件，并输出查询。
 
-"""
+近期对话：
+{history_block}
 
-        return f"""你是查询改写代理。根据用户消息和对话历史，判断是否需要检索记忆，并改写查询。
-
-{history_block}## 当前用户消息
+当前用户消息：
 {user_msg}
 
-## 判断规则
-- 简单问候（"你好""hi"）→ NO_RETRIEVE
-- 询问过去的事件、个人事实 → RETRIEVE
-- 包含代词（"上次/那个/它"）→ RETRIEVE 并消解为具体实体
-- 闲聊、通用知识、简单确认 → NO_RETRIEVE
+规则：
+- NO_RETRIEVE：打招呼、闲聊、确认当前轮内容、通用知识问答、简单回应"好/嗯/继续"、用户提出新的服务偏好或执行规则
+- RETRIEVE：询问过去发生的事、用户个人信息、用户是否告诉过某事
+- 用户提出新的偏好或规则时，decision 仍是 NO_RETRIEVE；这类内容只交给 procedure/preference 检索处理
+- 出现"都有哪些/列举/所有/一共/总共/历史上"这类聚合问题 → RETRIEVE，并改写成覆盖主题的宽泛 query
+- 出现"他/她/它/这个/那个/这东西/上次"这类指示词时，优先用近期对话消解为实际实体
+- "你还记得吗/你知道我的/你记不记得/我跟你说过"等元问题是在查事实本身，history_query 要贴近记忆摘要
+- 提到快递、物流、包裹时，若语境指向用户最近购买行为，应查购买历史
+- 提到身体症状、药、复查时，若语境指向用户健康状态，应查健康档案
 
-## 输出格式
-<decision>RETRIEVE</decision>
-<history_query>消解代词后的具体查询</history_query>
+示例：
+用户消息：以后讲复杂问题先给我一个能贯穿始终的例子
+→ <decision>NO_RETRIEVE</decision>
+   <history_query></history_query>
 
-或
+用户消息：【视频标题】https://short.example/item
+→ <decision>NO_RETRIEVE</decision>
+   <history_query></history_query>
 
-<decision>NO_RETRIEVE</decision>
-<history_query></history_query>"""
+用户消息：你还记得我用的是哪个 Fitbit 吗
+→ <decision>RETRIEVE</decision>
+   <history_query>用户使用的 Fitbit 设备型号</history_query>
+
+只输出 XML，不要解释：
+<decision>RETRIEVE|NO_RETRIEVE</decision>
+<history_query>...</history_query>"""
 
     def _build_procedure_prompt(self, user_msg: str) -> str:
         """构建 procedure 查询改写的 LLM prompt。"""

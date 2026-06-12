@@ -87,11 +87,29 @@ class ContentJudge:
 ## 待分类内容
 {items_text}
 
+## 评分标准（参考 magentic-agent 验证过的打分体系）
+对每条内容考虑三个维度（1=很低，5=很高）：
+- information_gap：这条消息包含用户尚不知道的新信息吗？
+- relevance：这条消息和用户当前关注的话题匹配吗？
+- expected_impact：用户收到后会觉得有价值吗？
+
+评分标尺：
+- 1：明显不成立/几乎没有价值
+- 2：偏弱，价值不足
+- 3：一般，价值不确定
+- 4：较强，明显有价值
+- 5：很强，强价值且很贴合
+
+额外约束：
+- 如果消息违反了用户明确写出的禁推规则，relevance 和 expected_impact 必须为 1
+- 如果消息包含多个主题，只要主要内容（>50%）符合用户偏好，就应该正常评分
+- 基于"是否应该推动发送"来打分
+
 ## 任务
-1. 逐条审视每个条目
+1. 逐条审视每个条目，考虑以上三个维度
 2. 调用 mark_interesting 或 mark_not_interesting 分类
-3. 如果有感兴趣条目且值得推送，调用 finish_turn(decision="reply")
-4. 如果没内容值得推送，调用 finish_turn(decision="skip")"""
+3. 如果感兴趣条目 ≥ 1 且值得推送 → finish_turn(decision="reply")
+4. 如果没内容值得推送 → finish_turn(decision="skip")"""
 
     def _build_tools(self) -> list[dict]:
         return [

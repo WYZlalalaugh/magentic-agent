@@ -111,7 +111,51 @@ class ConsolidationUpdater:
         return "\n".join(lines)
 
     def _build_prompt(self, conversation: str, current_memory: str, current_history: str) -> str:
-        return f"""你是记忆提取代理。从对话中提取结构化信息。
+        return f"""你是记忆提取代理。从对话中精确提取结构化信息，返回 JSON。
+
+## 字段说明
+
+### 1. "history_entries" → HISTORY.md
+按主题拆分，每条 {"summary":"[YYYY-MM-DD HH:MM] 摘要", "emotional_weight":0}。
+emotional_weight 规则：
+- 范围 0-10，默认 0
+- 用户明确表达强烈情绪（喜欢/厌恶/受挫/冲突）→ 3-9
+- 不确定时保守输出 0
+
+提取规则（严格遵守）：
+1. 只提取 USER 明确表达的行动、经历、计划和状态；ASSISTANT 的建议一律不写入
+2. 每条必须是简洁的第三人称摘要句，绝对不能包含 "USER:" 或 "ASSISTANT:" 标记
+3. 具体细节（名称、地点、数量、价格）必须保留，不得用"某商店""某地方"概括
+4. 先判断材料类型：是用户直接自述，还是用户在展示外部聊天记录/transcript
+5. 若为 transcript：只写 1 条高层 event；不要猜测 speaker 身份归属
+6. transcript 禁止输出未确认关系的句子（"用户向对方透露"等）
+
+### 2. "pending_items" → PENDING.md 候选缓冲
+格式：{"tag": "<tag>", "content": "<string>"}
+
+tag 限定为 7 个：
+- "identity"：稳定背景事实（身份、学校、长期技术方向、经历）
+- "preference"：稳定偏好、禁忌、审美、游戏口味
+- "key_info"：用户明确允许保存的 key/token/id
+- "health_long_term"：长期健康状态（只写长期，不写动态指标）
+- "requested_memory"：用户明确要求"长期记住"的内容
+- "correction"：对现有记忆的明确纠正
+- "agent_context"：工具性配置（端口、环境变量名）
+
+必须遵守：
+- 只写跨对话仍有长期价值的内容
+- 不写 agent 执行规则、SOP、工具调用顺序
+- 不写短期状态、近期计划、日程、一次性操作
+- 不写动态健康数据、实时指标
+
+进阶过滤：
+- 网络运维细节不提取（内网 IP、路由模式、运营商）
+- 临时状态不提取（"最近加班""这周很忙"），规律习惯可提取
+- 时效性数字和瞬时情绪不提取，保留背后的价值判断
+
+### 3. "recent_context" → RECENT_CONTEXT.md
+压缩为 5 个维度：active_topics、user_preferences、follow_ups、avoidances、ongoing_threads。
+- ongoing_threads 严格限制：只有健康、感情、重大生活事件等持续线索才准入；技术讨论、方案脑暴一律不得写入
 
 ## 当前长期记忆
 {current_memory or "（空）"}
@@ -122,16 +166,7 @@ class ConsolidationUpdater:
 ## 对话内容
 {conversation}
 
-## 输出格式（JSON）
-{{
-  "history_entries": ["[YYYY-MM-DD HH:MM] 摘要1", "..."],
-  "pending_items": [{{"tag": "identity", "content": "..."}}],
-  "recent_context": "# Recent Context\\n..."
-}}
-
-pending_items 的 tag 仅限于: identity, preference, key_info, health_long_term, requested_memory, correction, agent_context。
-
-只输出 JSON。"""
+只输出 JSON："""
 
     def _format_pending_items(self, items: list[dict]) -> str:
         lines = []
