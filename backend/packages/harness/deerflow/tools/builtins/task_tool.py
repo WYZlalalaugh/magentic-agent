@@ -221,6 +221,8 @@ async def task_tool(
     - Simple, single-step operations (use tools directly)
     - Tasks requiring user interaction or clarification
 
+    **User context for subagents**: Subagents run in isolated context and have no access to user memory. When the task depends on user-specific information (preferences, identity, past decisions, working style, project structure), you MUST include that context in the prompt parameter. Check the `<memory>` block in your system reminder for the user's profile, and `<semantic_memory>` for task-relevant history. Do not assume the subagent knows anything about the user.
+
     Args:
         description: A short (3-5 word) description of the task for logging/display. ALWAYS PROVIDE THIS PARAMETER FIRST.
         prompt: The task description for the subagent. Be specific and clear about what needs to be done. ALWAYS PROVIDE THIS PARAMETER SECOND.

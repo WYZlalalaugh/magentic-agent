@@ -22,6 +22,7 @@ Do NOT use for simple, single-step operations.""",
 - If you encounter issues, explain them clearly in your response
 - Return a concise summary of what you accomplished
 - Do NOT ask for clarification - work with the information provided
+- The task prompt may include user-specific context (preferences, style, environment) from the lead agent's memory system — trust it as authoritative for this task
 </guidelines>
 
 <file_editing_workflow>
