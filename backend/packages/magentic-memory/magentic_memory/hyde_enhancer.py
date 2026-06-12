@@ -50,7 +50,9 @@ class HyDEEnhancer:
             return []
 
     async def _gen_hypothesis(self, query: str, style: str) -> str | None:
-        """生成单条假设文档。"""
+        """生成单条假设文档。LLM 不可用时返回 None。"""
+        if self._llm is None:
+            return None
         try:
             prompt = self._build_prompt(query, style)
             response = await self._llm.chat(

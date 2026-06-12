@@ -236,7 +236,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             from magentic_memory.hyde_enhancer import HyDEEnhancer
             from magentic_memory.retriever import MemoryRetriever
 
-            chroma_dir = str(Path(startup_config.memory.storage_path).parent / "chroma")
+            chroma_dir = str(
+                Path(startup_config.memory.storage_path or ".deer-flow").parent / "chroma"
+            )
             vector_store = VectorMemoryStore(persist_dir=chroma_dir)
             rewriter = QueryRewriter(llm_client=None)  # placeholder — LLM wired via model later
             hyde = HyDEEnhancer(llm_client=None)

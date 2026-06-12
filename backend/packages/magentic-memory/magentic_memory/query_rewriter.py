@@ -104,15 +104,20 @@ class QueryRewriter:
             return fallback
 
     async def _call_llm(self, prompt: str) -> str:
-        """调用 LLM，返回原始文本。"""
-        response = await self._llm.chat(
-            messages=[{"role": "user", "content": prompt}],
-            tools=[],
-            max_tokens=self._max_tokens,
-            disable_thinking=True,
-        )
-        content = getattr(response, "content", response)
-        return str(content or "")
+        """调用 LLM，返回原始文本。LLM 不可用时返回空字符串（触发 fail-open）。"""
+        if self._llm is None:
+            return ""
+        try:
+            response = await self._llm.chat(
+                messages=[{"role": "user", "content": prompt}],
+                tools=[],
+                max_tokens=self._max_tokens,
+                disable_thinking=True,
+            )
+            content = getattr(response, "content", response)
+            return str(content or "")
+        except Exception:
+            return ""
 
     def _parse_output(self, raw: str) -> dict | None:
         """从 LLM 输出中解析 XML 格式的决策结果。"""

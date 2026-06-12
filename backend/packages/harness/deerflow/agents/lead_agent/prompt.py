@@ -624,11 +624,10 @@ def _get_markdown_memory_context(user_id: str, config: Any) -> str:
     from pathlib import Path
 
     base_dir = getattr(config, "storage_path", None)
-    if base_dir and not Path(base_dir).is_absolute():
-        from deerflow.config.paths import DEFAULT_HOME
-        base_dir = str(Path(DEFAULT_HOME))
+    if not base_dir or not str(base_dir).strip():
+        base_dir = str(Path.home() / ".deer-flow")
 
-    store = MarkdownMemoryStore(base_dir=Path(base_dir or "."))
+    store = MarkdownMemoryStore(base_dir=Path(base_dir))
 
     # MEMORY.md — 用户画像全文
     long_term = store.read_long_term(user_id)
