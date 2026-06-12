@@ -35,24 +35,10 @@ class ContentJudge:
         user_context: str = "",
         recent_history: str = "",
     ) -> dict:
-        """分类内容条目并决定是否推送。
-
-        Args:
-            items: 待分类内容 [{"id": "...", "title": "...", "body": "..."}, ...]
-            user_context: 用户画像、偏好等上下文
-            recent_history: 近期对话历史
-
-        Returns:
-            {
-                "decision": "reply" | "skip",
-                "interesting": [{"id": "...", "reason": "..."}],
-                "draft": "推送草稿文本" | None,
-            }
-        """
-        if not items:
+        """分类内容条目并决定是否推送。LLM 不可用时返回 skip。"""
+        if not items or self._llm is None:
             return {"decision": "skip", "interesting": [], "draft": None}
 
-        # 构建 prompt
         prompt = self._build_prompt(items, user_context, recent_history)
 
         try:
