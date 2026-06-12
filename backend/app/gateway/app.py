@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -226,6 +227,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         # Start proactive push loop (references magentic-proactive engine)
         proactive_loop = None
+
+        # Initialize vector memory retriever for semantic search (attach to config
+        # so build_middlewares() can inject it into VectorRetrievalMiddleware)
+        try:
+            from magentic_memory.vector_store import VectorMemoryStore
+            from magentic_memory.query_rewriter import QueryRewriter
+            from magentic_memory.hyde_enhancer import HyDEEnhancer
+            from magentic_memory.retriever import MemoryRetriever
+
+            chroma_dir = str(Path(startup_config.memory.storage_path).parent / "chroma")
+            vector_store = VectorMemoryStore(persist_dir=chroma_dir)
+            rewriter = QueryRewriter(llm_client=None)  # placeholder — LLM wired via model later
+            hyde = HyDEEnhancer(llm_client=None)
+            retriever = MemoryRetriever(
+                vector_store=vector_store,
+                rewriter=rewriter,
+                hyde=hyde,
+            )
+            # Attach to config so build_middlewares() can find it
+            startup_config._memory_retriever = retriever
+            startup_config.memory.vector_enabled = True
+            logger.info("Vector memory retriever initialized (Chroma persist_dir=%s)", chroma_dir)
+        except Exception:
+            logger.warning("Vector memory retriever not available; semantic search disabled")
+            startup_config.memory.vector_enabled = False
         try:
             from deerflow.agents.middlewares.proactive_loop_middleware import ProactiveLoopMiddleware
 
@@ -233,6 +259,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 mcp_pool=getattr(app.state, "mcp_pool", None),
                 llm_client=getattr(app.state, "llm_client", None),
                 channel_manager=getattr(app.state, "channel_manager", None),
+                drift_skills_dir="drift/skills",  # 相对于项目根的路径
                 enabled=startup_config.proactive.enabled if hasattr(startup_config, 'proactive') else False,
             )
             if proactive_loop._enabled:
@@ -248,6 +275,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                         logger.info("Proactive loop: user activity callback wired into ChannelManager")
                 except Exception:
                     logger.warning("Could not wire user activity callback into ChannelManager")
+
+        # Start MarkdownOptimizer background task (merges PENDING → MEMORY every 18h)
+        optimizer_task = None
+        try:
+            from deerflow.agents.memory.markdown_store import MarkdownMemoryStore
+            from deerflow.agents.memory.markdown_optimizer import MarkdownOptimizer
+
+            memory_dir = Path(startup_config.memory.storage_path).parent if startup_config.memory.storage_path else Path.home() / ".deer-flow"
+            md_store = MarkdownMemoryStore(base_dir=memory_dir)
+            optimizer = MarkdownOptimizer(
+                markdown_store=md_store,
+                llm_client=None,  # placeholder — wired via model resolution later
+            )
+            optimizer_task = asyncio.create_task(optimizer.run_periodic("default"))
+            logger.info("MarkdownOptimizer background task started (interval=%dh)", optimizer._interval_seconds // 3600)
+        except Exception:
+            logger.warning("MarkdownOptimizer not available; PENDING archiving disabled")
         except Exception:
             logger.exception("Failed to start proactive loop")
 
@@ -264,6 +308,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 logger.warning("Proactive loop shutdown timed out")
             except Exception:
                 logger.exception("Proactive loop shutdown failed")
+
+        # Stop MarkdownOptimizer
+        if optimizer_task is not None and not optimizer_task.done():
+            optimizer_task.cancel()
+            try:
+                await asyncio.wait_for(optimizer_task, timeout=_SHUTDOWN_HOOK_TIMEOUT_SECONDS)
+            except (asyncio.CancelledError, TimeoutError):
+                pass
 
         # Stop channel service on shutdown (bounded to prevent worker hang)
         try:

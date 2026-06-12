@@ -310,7 +310,16 @@ def build_middlewares(
     # relevant memories as <semantic_memory> tags in the user message.
     from deerflow.agents.middlewares.vector_retrieval_middleware import VectorRetrievalMiddleware
 
-    middlewares.append(VectorRetrievalMiddleware(enabled=False))  # Disabled by default; enable via config
+    # Check if a pre-built retriever was registered at startup (via lifespan)
+    memory_retriever = getattr(resolved_app_config, "_memory_retriever", None)
+    vector_enabled = (
+        memory_retriever is not None
+        and getattr(resolved_app_config.memory, "vector_enabled", False)
+    )
+    middlewares.append(VectorRetrievalMiddleware(
+        retriever=memory_retriever,
+        enabled=vector_enabled,
+    ))
 
     # Deterministically load a full SKILL.md when the user starts the turn with
     # /skill-name. This keeps the base system prompt metadata-only while giving
