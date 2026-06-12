@@ -724,6 +724,7 @@ class ChannelManager:
         default_session: dict[str, Any] | None = None,
         channel_sessions: dict[str, Any] | None = None,
         connection_repo: Any | None = None,
+        record_activity_callback: Callable | None = None,  # 主动推送：用户活动钩子
     ) -> None:
         self.bus = bus
         self.store = store
@@ -741,6 +742,7 @@ class ChannelManager:
         self._semaphore: asyncio.Semaphore | None = None
         self._running = False
         self._task: asyncio.Task | None = None
+        self._record_activity = record_activity_callback
 
     @staticmethod
     def _channel_supports_streaming(channel_name: str) -> bool:
@@ -907,6 +909,14 @@ class ChannelManager:
 
     async def _handle_message(self, msg: InboundMessage) -> None:
         msg = _apply_effective_owner(msg)
+
+        # 通知主动推送系统：用户有活动，更新电量模型
+        if self._record_activity and msg.msg_type == InboundMessageType.CHAT:
+            try:
+                self._record_activity(msg.channel_name, msg.chat_id)
+            except Exception:
+                pass
+
         async with self._semaphore:
             try:
                 if msg.msg_type == InboundMessageType.COMMAND:
