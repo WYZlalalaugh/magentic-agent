@@ -1,13 +1,12 @@
-import importlib.util
 import sys
 from pathlib import Path
 
-_PKG = Path(__file__).parent.parent / "magentic_memory" / "retriever.py"
-_spec = importlib.util.spec_from_file_location("retriever", _PKG)
-_mod = importlib.util.module_from_spec(_spec)
-sys.modules["retriever"] = _mod
-_spec.loader.exec_module(_mod)
-rrf_merge = _mod.rrf_merge
+# Ensure magentic-memory package is importable
+_PKG_DIR = str(Path(__file__).parent.parent.resolve())
+if _PKG_DIR not in sys.path:
+    sys.path.insert(0, _PKG_DIR)
+
+from magentic_memory.retriever import rrf_merge
 
 
 def test_rrf_merge_combines_two_sources():
