@@ -275,6 +275,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                         logger.info("Proactive loop: user activity callback wired into ChannelManager")
                 except Exception:
                     logger.warning("Could not wire user activity callback into ChannelManager")
+        except Exception:
+            logger.exception("Failed to start proactive loop")
 
         # Start MarkdownOptimizer background task (merges PENDING → MEMORY every 18h)
         optimizer_task = None
@@ -282,7 +284,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             from deerflow.agents.memory.markdown_store import MarkdownMemoryStore
             from deerflow.agents.memory.markdown_optimizer import MarkdownOptimizer
 
-            memory_dir = Path(startup_config.memory.storage_path).parent if startup_config.memory.storage_path else Path.home() / ".deer-flow"
+            memory_dir = Path(startup_config.memory.storage_path or ".deer-flow").parent if startup_config.memory.storage_path else Path.home() / ".deer-flow"
             md_store = MarkdownMemoryStore(base_dir=memory_dir)
             optimizer = MarkdownOptimizer(
                 markdown_store=md_store,
@@ -292,8 +294,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.info("MarkdownOptimizer background task started (interval=%dh)", optimizer._interval_seconds // 3600)
         except Exception:
             logger.warning("MarkdownOptimizer not available; PENDING archiving disabled")
-        except Exception:
-            logger.exception("Failed to start proactive loop")
 
         yield
 

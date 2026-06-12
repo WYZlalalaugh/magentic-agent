@@ -69,18 +69,30 @@ class ProactiveLoopMiddleware:
             logger.info("ProactiveLoopMiddleware: disabled, skipping")
             return
 
-        # 1. 构建推送函数：复用 DeerFlow ChannelManager 发送消息
+        # 1. 构建推送函数：复用 DeerFlow Channel 发送消息
         async def push_fn(content: str):
             if self._channel_manager is None:
                 logger.warning("ProactiveLoop: no channel_manager, cannot push")
                 return
             try:
-                await self._channel_manager.send_message(
-                    channel=self._default_channel,
-                    chat_id="",  # 需要在 tick 时动态获取
-                    text=content,
-                )
-                logger.info("ProactiveLoop: pushed message")
+                from app.channels.service import get_channel_service
+                svc = get_channel_service()
+                if svc:
+                    # 通过 ChannelService 获取活跃 channel 发送消息
+                    channel = svc.get_channel(self._default_channel)
+                    if channel:
+                        from app.channels.message_bus import OutboundMessage
+                        msg = OutboundMessage(
+                            channel_name=self._default_channel,
+                            chat_id="",  # 由 channel 自己决定
+                            text=content,
+                        )
+                        await channel.send(msg)
+                        logger.info("ProactiveLoop: pushed message")
+                    else:
+                        logger.warning("ProactiveLoop: channel '%s' not found", self._default_channel)
+                else:
+                    logger.warning("ProactiveLoop: no channel service available")
             except Exception as e:
                 logger.exception("ProactiveLoop: push failed: %s", e)
 

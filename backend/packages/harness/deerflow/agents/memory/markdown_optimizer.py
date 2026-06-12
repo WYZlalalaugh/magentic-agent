@@ -115,14 +115,21 @@ class MarkdownOptimizer:
         if self._llm is None:
             return ""
 
-        prompt = f"""你是记忆优化代理。将待合并事实合并到当前长期记忆中。
+        prompt = f"""你是记忆优化代理。将待合并事实合并到当前长期记忆中。只输出完整的 MEMORY.md，不要解释。
 
-规则：
-1. 同一个人/偏好的多条事实合并为一条
-2. 移除过时或矛盾的信息（保留最新的）
+## 合并规则
+1. 同一个人/偏好的多条事实合并为一条简洁摘要
+2. 移除明显过时或被新事实推翻的旧信息
 3. 保留现有记忆中与新事实不冲突的部分
 4. 每条事实用 bullet 格式: "- [tag] 内容"
 5. tag 仅限于: identity, preference, key_info, health_long_term, requested_memory, correction, agent_context
+
+## 质量过滤（严格执行）
+- 缺席成本测试：删掉这条事实后，Agent 在处理用户后续请求时会出错吗？不会 → 不写入
+- 网络运维细节不写入：内网 IP、路由模式、运营商信息、MAC 地址等瞬时运维配置
+- 时效性数字不写入：Star 数、增长率、评分等动态指标；但保留背后的价值判断
+- 瞬时状态不写入："最近加班""这周很忙"等带时间限定词的瞬时状态
+- Agent 执行规则不写入：检索策略、输出格式要求等属于 procedure，由隐式提取处理
 
 ## 当前长期记忆
 {current or "（空）"}
@@ -131,7 +138,7 @@ class MarkdownOptimizer:
 {pending}
 
 ## 输出
-直接输出完整的 MEMORY.md 内容（不要 JSON 包裹，不要解释）："""
+直接输出完整的 MEMORY.md 内容："""
 
         try:
             response = await self._llm.chat(
