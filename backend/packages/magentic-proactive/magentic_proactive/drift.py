@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import random
 from pathlib import Path
 from typing import Any
 
@@ -90,7 +91,7 @@ class DriftEngine:
             return {"skill": None, "summary": "无可用技能", "next_action": None}
 
         # 随机选一个技能执行
-        skill = skills[0] if len(skills) == 1 else skills[__import__("random").randint(0, len(skills) - 1)]
+        skill = skills[0] if len(skills) == 1 else skills[random.randint(0, len(skills) - 1)]
         logger.info("DriftEngine: executing skill=%s", skill["name"])
 
         if self._llm is None:
