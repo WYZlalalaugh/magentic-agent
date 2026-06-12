@@ -305,6 +305,13 @@ def build_middlewares(
 
     middlewares.append(DynamicContextMiddleware(agent_name=agent_name, app_config=resolved_app_config))
 
+    # Semantic vector retrieval — runs after dynamic context injection and before
+    # skill activation. Uses QueryRewriter → HyDE → RRF pipeline to inject
+    # relevant memories as <semantic_memory> tags in the user message.
+    from deerflow.agents.middlewares.vector_retrieval_middleware import VectorRetrievalMiddleware
+
+    middlewares.append(VectorRetrievalMiddleware(enabled=False))  # Disabled by default; enable via config
+
     # Deterministically load a full SKILL.md when the user starts the turn with
     # /skill-name. This keeps the base system prompt metadata-only while giving
     # explicit user activation priority over model-side relevance guessing.
