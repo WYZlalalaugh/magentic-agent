@@ -366,6 +366,16 @@ SYSTEM_PROMPT_TEMPLATE = """
 You are {agent_name}, an open-source super agent.
 </role>
 
+<memory_awareness>
+You receive two types of memory blocks in every conversation:
+
+1. `<memory>` (injected as <system-reminder>): The user's complete long-term profile — identity, preferences, key facts, and recent conversation context. This is always present.
+
+2. `<semantic_memory>` (injected into the user message): Real-time search results from the user's memory, retrieved based on the current query. These are highly relevant snippets tagged by type (操作规范/用户偏好/相关历史/用户画像). Items marked "有印象，不确定" are low-confidence — acknowledge the uncertainty when referencing them.
+
+When both blocks overlap on the same fact, prefer the `<semantic_memory>` version (it's more specific to the current context).
+</memory_awareness>
+
 {soul}
 {self_update_section}
 <thinking_style>
@@ -563,21 +573,15 @@ combined with a FastAPI gateway for REST API access [citation:FastAPI](https://f
 def _get_memory_context(agent_name: str | None = None, *, app_config: AppConfig | None = None) -> str:
     """Get memory context for injection into system prompt.
 
-    Args:
-        agent_name: If provided, loads per-agent memory. If None, loads global memory.
-        app_config: Explicit application config. When provided, memory options
-            are read from this value instead of the global config singleton.
-
-    Returns:
-        Formatted memory context string wrapped in XML tags, or empty string if disabled.
+    Supports two storage backends:
+    - Default: reads memory.json via get_memory_data() + format_memory_for_injection()
+    - Markdown: reads MEMORY.md + RECENT_CONTEXT.md from MarkdownMemoryStore
     """
     try:
-        from deerflow.agents.memory import format_memory_for_injection, get_memory_data
         from deerflow.runtime.user_context import get_effective_user_id
 
         if app_config is None:
             from deerflow.config.memory_config import get_memory_config
-
             config = get_memory_config()
         else:
             config = app_config.memory
@@ -585,7 +589,17 @@ def _get_memory_context(agent_name: str | None = None, *, app_config: AppConfig 
         if not config.enabled or not config.injection_enabled:
             return ""
 
-        memory_data = get_memory_data(agent_name, user_id=get_effective_user_id())
+        user_id = get_effective_user_id()
+
+        # Check if using MarkdownMemoryStore
+        storage_class = getattr(config, "storage_class", "") or ""
+        if "markdown_store" in storage_class or "MarkdownMemoryStore" in storage_class:
+            return _get_markdown_memory_context(user_id, config)
+
+        # Fall back to default memory.json backend
+        from deerflow.agents.memory import format_memory_for_injection, get_memory_data
+
+        memory_data = get_memory_data(agent_name, user_id=user_id)
         memory_content = format_memory_for_injection(
             memory_data,
             max_tokens=config.max_injection_tokens,
@@ -602,6 +616,37 @@ def _get_memory_context(agent_name: str | None = None, *, app_config: AppConfig 
     except Exception:
         logger.exception("Failed to load memory context")
         return ""
+
+
+def _get_markdown_memory_context(user_id: str, config: Any) -> str:
+    """Read memory from MarkdownMemoryStore (MEMORY.md + RECENT_CONTEXT.md)."""
+    from deerflow.agents.memory.markdown_store import MarkdownMemoryStore
+    from pathlib import Path
+
+    base_dir = getattr(config, "storage_path", None)
+    if base_dir and not Path(base_dir).is_absolute():
+        from deerflow.config.paths import DEFAULT_HOME
+        base_dir = str(Path(DEFAULT_HOME))
+
+    store = MarkdownMemoryStore(base_dir=Path(base_dir or "."))
+
+    # MEMORY.md — 用户画像全文
+    long_term = store.read_long_term(user_id)
+    # RECENT_CONTEXT.md — 当前语境（去掉 Recent Turns 避免重复）
+    recent = store.read_recent_context(user_id)
+    if recent and "## Recent Turns" in recent:
+        recent = recent.split("## Recent Turns")[0].strip()
+
+    parts = []
+    if long_term.strip():
+        parts.append(f"<long_term_memory>\n{long_term.strip()}\n</long_term_memory>")
+    if recent.strip():
+        parts.append(f"<recent_context>\n{recent.strip()}\n</recent_context>")
+
+    if not parts:
+        return ""
+
+    return "<memory>\n" + "\n".join(parts) + "\n</memory>\n"
 
 
 @lru_cache(maxsize=32)
@@ -797,8 +842,10 @@ def apply_prompt_template(
     acp_and_mounts_section = "\n".join(section for section in (acp_section, custom_mounts_section) if section)
 
     # Build and return the fully static system prompt.
-    # Memory and current date are injected per-turn via DynamicContextMiddleware
-    # as a <system-reminder> in the first HumanMessage, keeping this prompt
+    # Memory contexts are injected per-turn via middleware:
+    # - DynamicContextMiddleware: <memory> (full profile) + current date
+    # - VectorRetrievalMiddleware: <semantic_memory> (search results)
+    # Both appear as <system-reminder> blocks, keeping this prompt
     # identical across users and sessions for maximum prefix-cache reuse.
     return SYSTEM_PROMPT_TEMPLATE.format(
         agent_name=agent_name or "DeerFlow 2.0",
