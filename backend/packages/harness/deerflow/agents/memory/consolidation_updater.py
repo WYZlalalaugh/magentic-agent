@@ -72,20 +72,31 @@ class ConsolidationUpdater:
         # 2. 写入 HISTORY.md
         history_entries = result.get("history_entries", [])
         if history_entries:
-            history_text = "\n".join(history_entries) + "\n"
-            self._store.append_history(user_id, history_text)
+            # 兼容两种格式：字符串数组 或 {"summary": "...", "emotional_weight": 0} 对象数组
+            history_lines = []
+            for entry in history_entries:
+                if isinstance(entry, str):
+                    history_lines.append(entry)
+                elif isinstance(entry, dict):
+                    summary = entry.get("summary", "")
+                    ew = entry.get("emotional_weight", 0)
+                    if summary:
+                        history_lines.append(summary)
+            if history_lines:
+                history_text = "\n".join(history_lines) + "\n"
+                self._store.append_history(user_id, history_text)
 
-            # embed 到 Chroma
-            if self._vector:
-                for entry in history_entries:
-                    try:
-                        self._vector.add_memory(
-                            memory_type="event",
-                            content=entry,
-                            metadata={"source_ref": source_ref},
-                        )
-                    except Exception:
-                        logger.debug("consolidation: embed event failed for %r", entry[:60])
+                # embed 到 Chroma
+                if self._vector:
+                    for line in history_lines:
+                        try:
+                            self._vector.add_memory(
+                                memory_type="event",
+                                content=line,
+                                metadata={"source_ref": source_ref},
+                            )
+                        except Exception:
+                            logger.debug("consolidation: embed event failed for %r", line[:60])
 
         # 3. 写入 PENDING.md
         pending_items = result.get("pending_items", [])
