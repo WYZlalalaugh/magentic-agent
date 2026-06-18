@@ -50,7 +50,7 @@ models:
     display_name: deepseek-v4-flash
     use: langchain_openai:ChatOpenAI
     model: DeepSeek-V4-Flash
-    api_key: sk-hM30ZxmEVzLOaLq0Bb3fB8235736442eB4D292368f897fD2
+    api_key: 
     openai_api_base: https://api.edgefn.net/v1
     max_tokens: 8192
     timeout: 600.0
@@ -61,7 +61,7 @@ models:
 # Embedding model for vector memory (Chroma)
 embedding:
   model: BAAI/bge-m3
-  api_key: sk-hM30ZxmEVzLOaLq0Bb3fB8235736442eB4D292368f897fD2
+  api_key: 
   base_url: https://api.edgefn.net/v1
 
   # Example: OpenAI Responses API model
