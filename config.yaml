@@ -38,38 +38,31 @@ token_usage:
 # Configure available LLM models for the agent to use
 
 models:
-  # Example: Volcengine (Doubao) model
-  # - name: doubao-seed-1.8
-  #   display_name: Doubao-Seed-1.8
-  #   use: deerflow.models.patched_deepseek:PatchedChatDeepSeek
-  #   model: doubao-seed-1-8-251228
-  #   api_base: https://ark.cn-beijing.volces.com/api/v3
-  #   api_key: $VOLCENGINE_API_KEY
-  #   timeout: 600.0
-  #   max_retries: 2
-  #   supports_thinking: true
-  #   supports_vision: true
-  #   supports_reasoning_effort: true
-  #   when_thinking_enabled:
-  #     extra_body:
-  #       thinking:
-  #         type: enabled
-  #   when_thinking_disabled:
-  #     extra_body:
-  #       thinking:
-  #         type: disabled
-
-  # Example: OpenAI model
-  # - name: gpt-4
-  #   display_name: GPT-4
+  # - name: deepseek-v4-flash
+  #   display_name: deepseek-v4-flash
   #   use: langchain_openai:ChatOpenAI
-  #   model: gpt-4
-  #   api_key: $OPENAI_API_KEY # Use environment variable
-  #   request_timeout: 600.0
-  #   max_retries: 2
+  #   model: deepseek-v4-flash
+  #   api_key: sk-94c291588a8b4e8889e0ba8fe2016152
+  #   base_url: https://api.deepseek.com
+  #   max_tokens: 8192
+  #   timeout: 600.0
+  - name: deepseek-v4-flash
+    display_name: deepseek-v4-flash
+    use: langchain_openai:ChatOpenAI
+    model: DeepSeek-V4-Flash
+    api_key: sk-hM30ZxmEVzLOaLq0Bb3fB8235736442eB4D292368f897fD2
+    openai_api_base: https://api.edgefn.net/v1
+    max_tokens: 8192
+    timeout: 600.0
   #   max_tokens: 4096
   #   temperature: 0.7
   #   supports_vision: true # Enable vision support for view_image tool
+
+# Embedding model for vector memory (Chroma)
+embedding:
+  model: BAAI/bge-m3
+  api_key: sk-hM30ZxmEVzLOaLq0Bb3fB8235736442eB4D292368f897fD2
+  base_url: https://api.edgefn.net/v1
 
   # Example: OpenAI Responses API model
   # - name: gpt-5-responses
@@ -463,7 +456,6 @@ models:
   #       chat_template_kwargs:
   #         enable_thinking: true
 
-
   # Example: Qwen3-Coder deployed on MindIE Engine
   # - name: Qwen3_Coder_480B_MindIE
   #   display_name: Qwen3-Coder-480B (MindIE)
@@ -519,7 +511,6 @@ tools:
   #   use: deerflow.community.searxng.tools:web_search_tool
   #   base_url: http://localhost:8088   # SearXNG instance URL (default: :8088; Docker: http://searxng:8080)
   #   max_results: 5                     # Maximum number of search results
-
   # Web search tool (uses Serper - Google Search API, requires SERPER_API_KEY)
   # Serper provides real-time Google Search results. Sign up at https://serper.dev
   # Note: set SERPER_API_KEY in your environment before starting the app, or
@@ -529,21 +520,18 @@ tools:
   #   use: deerflow.community.serper.tools:web_search_tool
   #   max_results: 5
   #   # api_key: $SERPER_API_KEY  # Optional if SERPER_API_KEY env var is set
-
   # Web search tool (requires Tavily API key)
   # - name: web_search
   #   group: web
   #   use: deerflow.community.tavily.tools:web_search_tool
   #   max_results: 5
   #   # api_key: $TAVILY_API_KEY  # Set if needed
-
   # Web search tool (uses InfoQuest, requires InfoQuest API key)
   # - name: web_search
   #   group: web
   #   use: deerflow.community.infoquest.tools:web_search_tool
   #   # Used to limit the scope of search results, only returns content within the specified time range. Set to -1 to disable time filtering
   #   search_time_range: 10
-
   # Web search tool (uses Exa, requires EXA_API_KEY)
   # - name: web_search
   #   group: web
@@ -552,14 +540,12 @@ tools:
   #   search_type: auto  # Options: auto, neural, keyword
   #   contents_max_characters: 1000
   #   # api_key: $EXA_API_KEY
-
   # Web search tool (uses Firecrawl, requires FIRECRAWL_API_KEY)
   # - name: web_search
   #   group: web
   #   use: deerflow.community.firecrawl.tools:web_search_tool
   #   max_results: 5
   #   # api_key: $FIRECRAWL_API_KEY
-
   # Web fetch tool (uses Browserless - headless Chrome, self-hosted or cloud)
   # Browserless renders pages with a real headless Chrome, ideal for JavaScript-heavy
   # sites and SPAs. Deploy your own: https://github.com/browserless/browserless
@@ -575,7 +561,6 @@ tools:
   #   # wait_for_event: "networkidle"    # Wait for a page event before returning (e.g. "load", "networkidle")
   #   # wait_for_timeout_ms: 2000        # Extra wait after page load in milliseconds
   #   # wait_for_selector: "article"     # CSS selector to wait for before returning
-
   # Web fetch tool (uses Exa)
   # NOTE: Only one web_fetch provider can be active at a time.
   # Comment out the Jina AI web_fetch entry below before enabling this one.
@@ -583,7 +568,6 @@ tools:
   #   group: web
   #   use: deerflow.community.exa.tools:web_fetch_tool
   #   # api_key: $EXA_API_KEY
-
   # Web fetch tool (uses Jina AI reader)
   - name: web_fetch
     group: web
@@ -770,8 +754,8 @@ uploads:
   # Application-level upload limits enforced by the gateway and exposed to the
   # frontend before file selection.
   max_files: 10
-  max_file_size: 52428800    # 50 MiB
-  max_total_size: 104857600  # 100 MiB
+  max_file_size: 52428800 # 50 MiB
+  max_total_size: 104857600 # 100 MiB
   # Automatic Office/PDF conversion runs on the backend host before sandbox
   # isolation applies. Keep this disabled unless uploads come from a fully
   # trusted source and you intentionally accept host-side parser risk.
@@ -1043,10 +1027,8 @@ summarization:
 # Stores user context and conversation history for personalized responses
 memory:
   enabled: true
-  storage_path: memory.json # Path relative to backend directory
-  # Use MarkdownMemoryStore instead of default FileMemoryStorage
-  storage_class: deerflow.agents.memory.markdown_store.MarkdownMemoryStore
-  vector_enabled: true # Chroma semantic search (requires OPENAI_API_KEY)
+  storage_path: memory.json
+  vector_enabled: true # Chroma semantic search
   debounce_seconds: 30
   model_name: null
   max_facts: 100
@@ -1374,15 +1356,15 @@ proactive:
   enabled: true
   default_channel: telegram
   # Polling intervals (seconds) — adaptive based on user activity
-  tick_interval_s0: 480  # 8min (lowest urgency)
-  tick_interval_s1: 240  # 4min
-  tick_interval_s2: 120  # 2min
-  tick_interval_s3: 60   # 1min (highest urgency)
+  tick_interval_s0: 480 # 8min (lowest urgency)
+  tick_interval_s1: 240 # 4min
+  tick_interval_s2: 120 # 2min
+  tick_interval_s3: 60 # 1min (highest urgency)
   score_weight_energy: 0.35
-  jitter: 0.3  # ±30% random jitter
+  jitter: 0.3 # ±30% random jitter
   # ACK TTL (hours) for deduplication
-  ack_cited_ttl_hours: 168    # 7 days (content was cited in push)
-  ack_uncited_ttl_hours: 24   # 1 day (content scored low, not pushed)
+  ack_cited_ttl_hours: 168 # 7 days (content was cited in push)
+  ack_uncited_ttl_hours: 24 # 1 day (content scored low, not pushed)
   ack_discarded_ttl_hours: 720 # 30 days (irrelevant)
   # Drift idle tasks
   drift_enabled: true

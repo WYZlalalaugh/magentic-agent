@@ -591,10 +591,10 @@ def _get_memory_context(agent_name: str | None = None, *, app_config: AppConfig 
 
         user_id = get_effective_user_id()
 
-        # Check if using MarkdownMemoryStore
-        storage_class = getattr(config, "storage_class", "") or ""
-        if "markdown_store" in storage_class or "MarkdownMemoryStore" in storage_class:
-            return _get_markdown_memory_context(user_id, config)
+        # Try Markdown files first; fall back to JSON if not populated
+        md_context = _get_markdown_memory_context(user_id, config)
+        if md_context:
+            return md_context
 
         # Fall back to default memory.json backend
         from deerflow.agents.memory import format_memory_for_injection, get_memory_data

@@ -54,14 +54,10 @@ class HyDEEnhancer:
         if self._llm is None:
             return None
         try:
-            prompt = self._build_prompt(query, style)
-            response = await self._llm.chat(
-                messages=[{"role": "user", "content": prompt}],
-                tools=[],
-                max_tokens=self._max_tokens,
-            )
-            content = getattr(response, "content", response)
-            text = str(content or "").strip()
+            import asyncio
+            from langchain_core.messages import HumanMessage
+            result = await asyncio.to_thread(self._llm.invoke, [HumanMessage(content=prompt)])
+            text = str(result.content or "").strip()
             return text if text else None
         except Exception:
             return None

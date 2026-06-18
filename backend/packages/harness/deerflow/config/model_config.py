@@ -49,3 +49,20 @@ class ModelConfig(BaseModel):
             "This is a shortcut for `when_thinking_enabled` and will be merged with `when_thinking_enabled` if both are provided."
         ),
     )
+
+
+class EmbeddingConfig(BaseModel):
+    """Config section for the embedding model used by vector memory (Chroma)."""
+
+    model: str = Field(
+        default="text-embedding-3-small",
+        description="Embedding model name (OpenAI-compatible API)",
+    )
+    api_key: str | None = Field(
+        default=None,
+        description="API key for the embedding service. Falls back to OPENAI_API_KEY env var if not set.",
+    )
+    base_url: str | None = Field(
+        default=None,
+        description="Base URL for the embedding API (OpenAI-compatible). Omit for OpenAI default.",
+    )

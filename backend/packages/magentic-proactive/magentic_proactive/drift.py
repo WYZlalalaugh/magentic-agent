@@ -123,12 +123,10 @@ class DriftEngine:
 开始执行："""
 
         try:
-            response = await self._llm.chat(
-                messages=[{"role": "user", "content": prompt}],
-                tools=[],
-                model=self._model,
-            )
-            content = getattr(response, "content", response)
+            import asyncio
+            from langchain_core.messages import HumanMessage
+            result = await asyncio.to_thread(self._llm.invoke, [HumanMessage(content=prompt)])
+            content = str(result.content or "")
 
             return {
                 "skill": skill["name"],

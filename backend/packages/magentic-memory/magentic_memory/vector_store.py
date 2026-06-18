@@ -24,17 +24,18 @@ class VectorMemoryStore:
     def __init__(
         self,
         persist_dir: str,
-        embedding_model: str = "text-embedding-3-small",
+        model: str = "text-embedding-3-small",
         api_key: str | None = None,
+        base_url: str | None = None,
     ):
         self._client = chromadb.PersistentClient(
             path=persist_dir,
             settings=Settings(anonymized_telemetry=False),
         )
-        self._embeddings = OpenAIEmbeddings(
-            model=embedding_model,
-            api_key=api_key,
-        )
+        kwargs: dict = {"model": model, "api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        self._embeddings = OpenAIEmbeddings(**kwargs)
         self._collections: dict[str, Chroma] = {}
         for mtype, col_name in self._COLLECTION_NAMES.items():
             self._collections[mtype] = Chroma(

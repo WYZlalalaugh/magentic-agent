@@ -108,14 +108,10 @@ class QueryRewriter:
         if self._llm is None:
             return ""
         try:
-            response = await self._llm.chat(
-                messages=[{"role": "user", "content": prompt}],
-                tools=[],
-                max_tokens=self._max_tokens,
-                disable_thinking=True,
-            )
-            content = getattr(response, "content", response)
-            return str(content or "")
+            import asyncio
+            from langchain_core.messages import HumanMessage
+            result = await asyncio.to_thread(self._llm.invoke, [HumanMessage(content=prompt)])
+            return str(result.content or "")
         except Exception:
             return ""
 

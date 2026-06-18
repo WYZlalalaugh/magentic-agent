@@ -57,7 +57,10 @@ class ConsolidationUpdater:
             {"history_entries": [...], "pending_items": [...], "recent_context": "..."}
         """
         if not messages or self._llm is None:
+            logger.debug("Consolidation: skipped (no messages or LLM)")
             return {"history_entries": [], "pending_items": [], "recent_context": ""}
+
+        logger.info("Consolidation: processing %d messages for user=%s", len(messages), user_id)
 
         # 1. 调用 LLM 提取结构化信息
         conversation = self._format_conversation(messages)
@@ -66,49 +69,89 @@ class ConsolidationUpdater:
 
         prompt = self._build_prompt(conversation, current_memory, current_history)
         raw_output = await self._call_llm(prompt)
+        logger.info("Consolidation: LLM returned:\n%s", (raw_output or "EMPTY")[:1000])
 
         result = self._parse_output(raw_output)
+        logger.info("Consolidation: parsed %d history_entries, %d pending_items, recent_context=%r",
+                     len(result.get("history_entries", [])),
+                     len(result.get("pending_items", [])),
+                     (result.get("recent_context", "") or "")[:60])
 
-        # 2. 写入 HISTORY.md
+        # 2. 写入 HISTORY.md（去重：跳过已存在的条目）
         history_entries = result.get("history_entries", [])
+        history_lines = []
         if history_entries:
-            # 兼容两种格式：字符串数组 或 {"summary": "...", "emotional_weight": 0} 对象数组
-            history_lines = []
+            current = self._store.read_history(user_id)
+            current_events = set(
+                line.strip() for line in current.splitlines() if line.strip()
+            )
             for entry in history_entries:
                 if isinstance(entry, str):
-                    history_lines.append(entry)
+                    if entry.strip() not in current_events:
+                        history_lines.append(entry)
                 elif isinstance(entry, dict):
                     summary = entry.get("summary", "")
-                    ew = entry.get("emotional_weight", 0)
-                    if summary:
+                    if summary and summary.strip() not in current_events:
                         history_lines.append(summary)
-            if history_lines:
-                history_text = "\n".join(history_lines) + "\n"
-                self._store.append_history(user_id, history_text)
+        if history_lines:
+            history_text = "\n".join(history_lines) + "\n"
+            self._store.append_history(user_id, history_text)
+            logger.info("Consolidation: wrote %d history entries", len(history_lines))
 
-                # embed 到 Chroma
-                if self._vector:
-                    for line in history_lines:
-                        try:
-                            self._vector.add_memory(
-                                memory_type="event",
-                                content=line,
-                                metadata={"source_ref": source_ref},
-                            )
-                        except Exception:
-                            logger.debug("consolidation: embed event failed for %r", line[:60])
+            # embed 到 Chroma
+            if self._vector:
+                for line in history_lines:
+                    try:
+                        self._vector.add_memory(
+                            memory_type="event",
+                            content=line,
+                            metadata={"source_ref": source_ref},
+                        )
+                    except Exception:
+                        logger.debug("consolidation: embed event failed for %r", line[:60])
 
-        # 3. 写入 PENDING.md
+        # 3. 写入 PENDING.md（去重：跳过内容相同的条目）
         pending_items = result.get("pending_items", [])
         if pending_items:
+            current_pending = self._store.read_pending(user_id)
             formatted = self._format_pending_items(pending_items)
             if formatted:
-                self._store.append_pending(user_id, formatted)
+                # 只在内容不重复时才追加
+                new_lines = [
+                    line for line in formatted.splitlines()
+                    if line.strip() and line.strip() not in current_pending
+                ]
+                if new_lines:
+                    self._store.append_pending(user_id, "\n".join(new_lines) + "\n")
+                    logger.info("Consolidation: wrote %d pending items", len(new_lines))
 
         # 4. 写入 RECENT_CONTEXT.md
         recent_context = result.get("recent_context", "")
+        if isinstance(recent_context, dict):
+            # LLM returned structured object → format as markdown text
+            lines = ["# Recent Context", ""]
+            for key, label in [
+                ("active_topics", "最近持续关注"),
+                ("user_preferences", "最近明确偏好"),
+                ("follow_ups", "最近待延续话题"),
+                ("avoidances", "最近避免事项"),
+            ]:
+                items = recent_context.get(key, [])
+                if items:
+                    if isinstance(items, list):
+                        lines.append(f"- {label}：{'；'.join(str(i) for i in items[:3])}")
+                    else:
+                        lines.append(f"- {label}：{items}")
+            ongoing = recent_context.get("ongoing_threads", [])
+            if ongoing:
+                lines.append("")
+                lines.append("## Ongoing Threads")
+                for t in (ongoing if isinstance(ongoing, list) else [ongoing]):
+                    lines.append(f"- {t}")
+            recent_context = "\n".join(lines)
         if recent_context:
-            self._store.write_recent_context(user_id, recent_context)
+            self._store.write_recent_context(user_id, str(recent_context))
+            logger.info("Consolidation: wrote recent context")
 
         return result
 
@@ -117,7 +160,7 @@ class ConsolidationUpdater:
         for msg in messages:
             role = str(msg.get("role", "") or "").upper()
             content = str(msg.get("content", "") or "").strip()
-            if role in ("USER", "ASSISTANT") and content:
+            if role in ("USER", "ASSISTANT", "HUMAN", "AI") and content:
                 lines.append(f"{role}: {content}")
         return "\n".join(lines)
 
@@ -127,7 +170,7 @@ class ConsolidationUpdater:
 ## 字段说明
 
 ### 1. "history_entries" → HISTORY.md
-按主题拆分，每条 {"summary":"[YYYY-MM-DD HH:MM] 摘要", "emotional_weight":0}。
+按主题拆分，每条 {{"summary":"[YYYY-MM-DD HH:MM] 摘要", "emotional_weight":0}}。
 emotional_weight 规则：
 - 范围 0-10，默认 0
 - 用户明确表达强烈情绪（喜欢/厌恶/受挫/冲突）→ 3-9
@@ -142,7 +185,7 @@ emotional_weight 规则：
 6. transcript 禁止输出未确认关系的句子（"用户向对方透露"等）
 
 ### 2. "pending_items" → PENDING.md 候选缓冲
-格式：{"tag": "<tag>", "content": "<string>"}
+格式：{{"tag": "<tag>", "content": "<string>"}}
 
 tag 限定为 7 个：
 - "identity"：稳定背景事实（身份、学校、长期技术方向、经历）
@@ -165,17 +208,36 @@ tag 限定为 7 个：
 - 时效性数字和瞬时情绪不提取，保留背后的价值判断
 
 ### 3. "recent_context" → RECENT_CONTEXT.md
-压缩为 5 个维度：active_topics、user_preferences、follow_ups、avoidances、ongoing_threads。
+输出纯文本字符串，包含 5 个维度的 Markdown bullet 列表：
+- 最近持续关注：xxx；xxx
+- 最近明确偏好：xxx
+- 最近待延续话题：xxx
+- 最近避免事项：xxx
 - ongoing_threads 严格限制：只有健康、感情、重大生活事件等持续线索才准入；技术讨论、方案脑暴一律不得写入
 
 ## 当前长期记忆
 {current_memory or "（空）"}
 
-## 当前历史
+## 当前历史（已有条目，不要重复提取）
 {current_history or "（空）"}
+{current_history and "以上条目已存在，请只提取本次对话中新增的事件和事实，不要重复旧内容。" or ""}
 
 ## 对话内容
 {conversation}
+
+## 输出格式（严格按此 JSON 结构，只替换占位内容）
+```json
+{{
+  "history_entries": [
+    {{"summary": "[YYYY-MM-DD HH:MM] 用户做了某事", "emotional_weight": 0}}
+  ],
+  "pending_items": [
+    {{"tag": "identity", "content": "用户是..."}}
+  ],
+  "recent_context": "- 最近持续关注：xxx；xxx\\n- 最近明确偏好：xxx\\n- 最近待延续话题：xxx\\n- 最近避免事项：xxx"
+}}
+```
+history_entries 可选空数组 []，pending_items 可选空数组 []，recent_context 可选空字符串 ""。
 
 只输出 JSON："""
 
@@ -203,10 +265,7 @@ tag 限定为 7 个：
     async def _call_llm(self, prompt: str) -> str:
         if self._llm is None:
             return ""
-        response = await self._llm.chat(
-            messages=[{"role": "user", "content": prompt}],
-            tools=[],
-            model=self._model,
-        )
-        content = getattr(response, "content", response)
-        return str(content or "")
+        import asyncio
+        from langchain_core.messages import HumanMessage
+        result = await asyncio.to_thread(self._llm.invoke, [HumanMessage(content=prompt)])
+        return str(result.content or "")

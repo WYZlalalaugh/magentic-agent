@@ -18,6 +18,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Class-level processor shared across all MemoryMiddleware instances
+_markdown_processor = None
+
+
+def set_markdown_processor(processor):
+    global _markdown_processor
+    _markdown_processor = processor
+    logger.info("Markdown processor registered: %s", type(processor).__name__ if processor else "None")
+
 
 class MemoryMiddlewareState(AgentState):
     """Compatible with the `ThreadState` schema."""
@@ -48,6 +57,10 @@ class MemoryMiddleware(AgentMiddleware[MemoryMiddlewareState]):
         super().__init__()
         self._agent_name = agent_name
         self._memory_config = memory_config
+        self._markdown_processor = None
+
+    def set_markdown_processor(self, processor):
+        self._markdown_processor = processor
 
     @override
     def after_agent(self, state: MemoryMiddlewareState, runtime: Runtime) -> dict | None:
@@ -106,5 +119,16 @@ class MemoryMiddleware(AgentMiddleware[MemoryMiddlewareState]):
             correction_detected=correction_detected,
             reinforcement_detected=reinforcement_detected,
         )
+
+        # Also write to Markdown files via ConsolidationUpdater
+        processor = self._markdown_processor or _markdown_processor
+        if processor:
+            try:
+                import asyncio
+                sources = [m for m in filtered_messages if getattr(m, "type", None) in ("human", "ai")]
+                msgs = [{"role": getattr(m, "type", "human"), "content": str(getattr(m, "content", "") or "")} for m in sources]
+                asyncio.create_task(processor.process(msgs, user_id or "default"))
+            except Exception:
+                logger.warning("Markdown processor skipped", exc_info=True)
 
         return None

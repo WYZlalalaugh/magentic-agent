@@ -42,14 +42,14 @@ class ContentJudge:
         prompt = self._build_prompt(items, user_context, recent_history)
 
         try:
-            response = await self._llm.chat(
-                messages=[{"role": "user", "content": prompt}],
-                tools=self._build_tools(),
-                model=self._model,
-                max_tokens=self._max_tokens,
+            import asyncio
+            from langchain_core.messages import HumanMessage
+            tools = self._build_tools()
+            llm_with_tools = self._llm.bind_tools(tools)
+            result = await asyncio.to_thread(
+                llm_with_tools.invoke, [HumanMessage(content=prompt)]
             )
-
-            return self._parse_response(response)
+            return self._parse_response(result)
 
         except Exception as e:
             logger.warning("ContentJudge: LLM call failed: %s", e)

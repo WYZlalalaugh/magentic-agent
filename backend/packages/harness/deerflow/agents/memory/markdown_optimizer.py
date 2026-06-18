@@ -141,13 +141,10 @@ class MarkdownOptimizer:
 直接输出完整的 MEMORY.md 内容："""
 
         try:
-            response = await self._llm.chat(
-                messages=[{"role": "user", "content": prompt}],
-                tools=[],
-                model=self._model,
-            )
-            content = getattr(response, "content", response)
-            return str(content or "").strip()
+            import asyncio
+            from langchain_core.messages import HumanMessage
+            result = await asyncio.to_thread(self._llm.invoke, [HumanMessage(content=prompt)])
+            return str(result.content or "").strip()
         except Exception as e:
             logger.warning("MarkdownOptimizer: merge_memory LLM failed: %s", e)
             return current
@@ -194,13 +191,10 @@ class MarkdownOptimizer:
 {pending}"""
 
         try:
-            response = await self._llm.chat(
-                messages=[{"role": "user", "content": prompt}],
-                tools=[],
-                model=self._model,
-            )
-            content = getattr(response, "content", response)
-            return str(content or "").strip()
+            import asyncio
+            from langchain_core.messages import HumanMessage
+            result = await asyncio.to_thread(self._llm.invoke, [HumanMessage(content=prompt)])
+            return str(result.content or "").strip()
         except Exception as e:
             logger.warning("MarkdownOptimizer: update_self LLM failed: %s", e)
             return current_self

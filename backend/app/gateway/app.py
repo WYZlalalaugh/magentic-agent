@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -228,8 +229,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Start proactive push loop (references magentic-proactive engine)
         proactive_loop = None
 
+        # ── Create shared LLM instance via DeerFlow's factory ──
+        llm = None
+        try:
+            from deerflow.models.factory import create_chat_model
+            llm = create_chat_model(attach_tracing=True)
+            logger.info("Shared LLM initialized")
+        except Exception:
+            logger.warning("Failed to create shared LLM instance", exc_info=True)
+
         # Initialize vector memory retriever for semantic search (attach to config
         # so build_middlewares() can inject it into VectorRetrievalMiddleware)
+        vector_store = None
         try:
             from magentic_memory.vector_store import VectorMemoryStore
             from magentic_memory.query_rewriter import QueryRewriter
@@ -239,9 +250,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             chroma_dir = str(
                 Path(startup_config.memory.storage_path or ".deer-flow").parent / "chroma"
             )
-            vector_store = VectorMemoryStore(persist_dir=chroma_dir)
-            rewriter = QueryRewriter(llm_client=None)  # placeholder — LLM wired via model later
-            hyde = HyDEEnhancer(llm_client=None)
+            emb = startup_config.embedding
+            vector_store = VectorMemoryStore(
+                persist_dir=chroma_dir,
+                model=emb.model,
+                api_key=emb.api_key,
+                base_url=emb.base_url,
+            )
+            rewriter = QueryRewriter(llm_client=llm)
+            hyde = HyDEEnhancer(llm_client=llm)
             retriever = MemoryRetriever(
                 vector_store=vector_store,
                 rewriter=rewriter,
@@ -257,9 +274,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
             proactive_loop = ProactiveLoopMiddleware(
                 mcp_pool=getattr(app.state, "mcp_pool", None),
-                llm_client=getattr(app.state, "llm_client", None),
+                llm_client=llm,
                 channel_manager=getattr(app.state, "channel_manager", None),
-                drift_skills_dir="drift/skills",
+                drift_skills_dir=str(Path(__file__).parent.parent.parent.parent / "drift" / "skills"),
                 enabled=True,  # Controlled by config.yaml proactive.enabled
             )
             if proactive_loop._enabled:
@@ -292,8 +309,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             )
             optimizer_task = asyncio.create_task(optimizer.run_periodic("default"))
             logger.info("MarkdownOptimizer background task started (interval=%dh)", optimizer._interval_seconds // 3600)
+
+            # Wire ConsolidationUpdater into MemoryMiddleware
+            from deerflow.agents.memory.consolidation_updater import ConsolidationUpdater
+            from deerflow.agents.middlewares import memory_middleware
+            consolidator = ConsolidationUpdater(markdown_store=md_store, vector_store=vector_store)
+            consolidator._llm = llm
+            optimizer._llm = llm
+            memory_middleware.set_markdown_processor(consolidator)
+            app.state.markdown_processor = consolidator  # 存到 app.state 抗 reload
+            logger.info("ConsolidationUpdater wired into MemoryMiddleware")
         except Exception:
-            logger.warning("MarkdownOptimizer not available; PENDING archiving disabled")
+            logger.warning("MarkdownOptimizer not available; PENDING archiving disabled", exc_info=True)
 
         yield
 
